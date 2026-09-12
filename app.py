@@ -5,7 +5,6 @@ import io
 import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 # --- CẤU HÌNH TRANG (PAGE CONFIG) ---
 st.set_page_config(
@@ -17,9 +16,9 @@ st.set_page_config(
 
 # --- THUẬT NGỮ & GIẢI THÍCH (GLOSSARY) ---
 # SOP: Standard Operating Procedure - Quy trình thao tác chuẩn
-# KPI: Key Performance Indicator - Chỉ số đo lường hiệu suất (tỷ lệ tuân thủ & hoàn thiện biểu mẫu)
+# KPI: Key Performance Indicator - Chỉ số đo lường hiệu suất (tỷ lệ chuẩn hóa tài liệu & biểu mẫu)
 # RACI Matrix: Responsible (Thực hiện), Accountable (Phê duyệt), Consulted (Tham vấn), Informed (Nhận thông tin)
-# SSOT: Single Source of Truth - Nguồn dữ liệu gốc duy nhất (Google Sheets & Google Drive)
+# SSOT: Single Source of Truth - Nguồn dữ liệu chuẩn xác duy nhất (Google Sheets & Google Drive)
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7vrN3GLRabuoKp2kDJp7IWCsDcuHsrxqaXZS7itG_nSG7GyHUHDF5ogUf-v_z230B2AfcWUTnSkCk/pub?output=csv"
 
@@ -41,7 +40,7 @@ def get_drive_service():
 drive_service = get_drive_service()
 ROOT_FOLDER_ID = st.secrets.get("FOLDER_ID", "") if "FOLDER_ID" in st.secrets else ""
 
-# --- 2. NẠP DỮ LIỆU TỪ GOOGLE SHEETS (84 MỤC TUÂN THỦ & QUY TRÌNH) ---
+# --- 2. NẠP DỮ LIỆU TỪ GOOGLE SHEETS ---
 @st.cache_data(ttl=600)
 def load_sheets_data(url):
     try:
@@ -57,12 +56,8 @@ df_sheets, sheet_err = load_sheets_data(CSV_URL)
 def create_sample_docx(title, code, dept, content):
     """Tạo file văn bản quy trình chuẩn .docx"""
     import zipfile
-    import xml.etree.ElementTree as ET
-    
-    # Tạo một file docx hợp lệ từ XML cấu trúc cơ bản
     docx_io = io.BytesIO()
     with zipfile.ZipFile(docx_io, "w", zipfile.ZIP_DEFLATED) as docx_zip:
-        # [Content_Types].xml
         content_types = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -73,7 +68,6 @@ def create_sample_docx(title, code, dept, content):
         )
         docx_zip.writestr("[Content_Types].xml", content_types)
         
-        # _rels/.rels
         rels = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -82,7 +76,6 @@ def create_sample_docx(title, code, dept, content):
         )
         docx_zip.writestr("_rels/.rels", rels)
         
-        # word/document.xml
         escaped_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         escaped_content = content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         today_str = datetime.date.today().strftime("%d/%m/%Y")
@@ -113,7 +106,7 @@ def create_sample_xlsx(columns_list, sample_rows, sheet_name="Bieu_Mau"):
     output.seek(0)
     return output.getvalue()
 
-# --- 4. KHỞI TẠO DỮ LIỆU CÂY THƯ MỤC CÁC PHÒNG BAN ---
+# --- 4. DỮ LIỆU CÁC KHỐI PHÒNG BAN ---
 DEPTS_DATA = [
     {
         "id": "01_PROD",
@@ -125,15 +118,15 @@ DEPTS_DATA = [
             {
                 "code": "SOP-PROD-01",
                 "title": "Quy trình Lập Kế hoạch Sản xuất & Phát hành Lệnh Gia công (Work Order)",
-                "legal": "Nghị định 113/2017/NĐ-CP về an toàn sản xuất; Tiêu chuẩn thép xuất khẩu JIS G3101 / ASTM A36",
-                "content": "Quy định quy trình 5 bước: Tiếp nhận đơn hàng từ ERP -> Khai báo BOM định mức phôi -> Kiểm tra tồn kho cuộn/phôi -> Phát hành Lệnh chạy máy (Work Order) -> Bàn giao kiểm soát KCS.",
+                "legal": "Nghị định 113/2017/NĐ-CP; Tiêu chuẩn JIS G3101 / ASTM A36",
+                "content": "Quy định 5 bước: Tiếp nhận đơn hàng ERP -> Khai báo BOM phôi -> Kiểm tra tồn kho -> Phát hành Lệnh Work Order -> Nghiệm thu bàn giao KCS.",
                 "file_name": "SOP-PROD-01_Quy_Trinh_San_Xuat.docx"
             },
             {
                 "code": "SOP-PROD-02",
                 "title": "Quy chuẩn Định mức Tiêu hao & Kiểm soát Tỷ lệ Hao hụt Phôi Thép",
-                "legal": "Quy chuẩn nội bộ kiểm soát tỷ lệ hao hụt phôi định mức <= 1.2%/lô hàng",
-                "content": "Quy định phân loại phôi, đối chiếu cân điện tử đầu ca và cuối ca, phân loại sắt phế liệu và ghi nhận số liệu về hệ thống ERP.",
+                "legal": "Quy chuẩn kiểm soát tỷ lệ hao hụt phôi định mức <= 1.2%/lô hàng xuất khẩu",
+                "content": "Quy định phân loại phôi, đối chiếu cân điện tử đầu ca và cuối ca, phân loại sắt phế liệu và ghi nhận số liệu lên hệ thống ERP.",
                 "file_name": "SOP-PROD-02_Kiem_Soat_Hao_Hut_Phoi.docx"
             }
         ],
@@ -169,8 +162,8 @@ DEPTS_DATA = [
             {
                 "code": "SOP-QC-01",
                 "title": "Quy trình Nghiệm thu Phôi Thép Đầu vào & Đối chiếu Chứng chỉ MTC/CO-CQ",
-                "legal": "Bộ Luật Thương mại; Tiêu chuẩn ISO 9001:2015; Tiêu chuẩn ASTM A6/A6M về dung sai thép tấm",
-                "content": "Kiểm tra 100% chứng chỉ MTC (Mill Test Certificate) khớp số dập nổi trên thân thép. Lấy mẫu thử nghiệm kéo uốn, đo độ dày bằng panme điện tử trước khi cho phép nhập kho.",
+                "legal": "Bộ Luật Thương mại; ISO 9001:2015; Tiêu chuẩn ASTM A6/A6M",
+                "content": "Kiểm tra 100% chứng chỉ MTC khớp số Heat No dập nổi. Lấy mẫu thử nghiệm kéo uốn, đo độ dày bằng panme trước khi nhập kho.",
                 "file_name": "SOP-QC-01_Nghiem_Thu_Chat_Luong_Dau_Vao.docx"
             }
         ],
@@ -178,7 +171,7 @@ DEPTS_DATA = [
             {
                 "code": "BM-QC-01",
                 "name": "Biên Bản Kiểm Tra Cơ Lý Tính & Dung Sai Phôi Thép",
-                "cols": ["STT", "Ngày Kiểm", "Nhà Cung Cấp", "Số Heat No", "Mác Thép", "Độ Dày Đo Được (mm)", "Dung Sai Chuẩn", "Thử Kéo Uốn", "Kết Luận (PASS/HOLD)"],
+                "cols": ["STT", "Ngày Kiểm", "Nhà Cung Cấp", "Số Heat No", "Mác Thép", "Độ Dày Đo (mm)", "Dung Sai Chuẩn", "Thử Kéo Uốn", "Kết Luận"],
                 "rows": [
                     [1, "12/09/2026", "Thép Hòa Phát", "HN-88392", "SS400", 11.98, "+/- 0.15mm", "Đạt chuẩn", "PASS"],
                     [2, "12/09/2026", "Thép Kyoei", "HN-77102", "Q345B", 15.92, "+/- 0.20mm", "Đạt chuẩn", "PASS"]
@@ -197,8 +190,8 @@ DEPTS_DATA = [
             {
                 "code": "SOP-FIN-01",
                 "title": "Quy trình Đối chiếu 3 Bên & Phê duyệt Thanh toán Hợp đồng Vật tư Thép",
-                "legal": "Luật Kế toán số 88/2015/QH13; Nghị định 123/2020/NĐ-CP về Hóa đơn chứng từ điện tử",
-                "content": "Bắt buộc đối chiếu 3 chiều (3-Way Matching): Đơn đặt hàng PO của Thu mua - Biên bản giao nhận hàng (GRN) của Thủ kho - Hóa đơn điện tử VAT hợp lệ của Nhà cung cấp trước khi chi trả.",
+                "legal": "Luật Kế toán số 88/2015/QH13; Nghị định 123/2020/NĐ-CP",
+                "content": "Bắt buộc đối chiếu 3 chiều (3-Way Matching): Đơn hàng PO - Biên bản giao nhận GRN - Hóa đơn điện tử VAT hợp lệ.",
                 "file_name": "SOP-FIN-01_Doi_Chieu_Va_Duyet_Chi_Thanh_Toan.docx"
             }
         ],
@@ -206,7 +199,7 @@ DEPTS_DATA = [
             {
                 "code": "BM-FIN-01",
                 "name": "Giấy Đề Nghị Thanh Toán Tạm Ứng & Hợp Đồng Mua Thép",
-                "cols": ["Mã Đề Nghị", "Bộ Phận Yêu Cầu", "Nhà Cung Cấp", "Số Tiền Đề Nghị (VNĐ)", "Số Hóa Đơn VAT", "Kèm Đơn Hàng PO", "Kế Toán Soát Xét", "Ban Giám Đốc Duyệt"],
+                "cols": ["Mã Đề Nghị", "Bộ Phận Yêu Cầu", "Nhà Cung Cấp", "Số Tiền (VNĐ)", "Số Hóa Đơn VAT", "Kèm Đơn PO", "Kế Toán Soát Xét", "Ban Giám Đốc Duyệt"],
                 "rows": [
                     ["TT-2026-081", "Khối Mua Hàng", "Công ty Thép Pomina", 1450000000, "HD-00912", "PO-2026-101", "Đã đối chiếu đủ GRN", "Đã duyệt chi"]
                 ],
@@ -225,7 +218,7 @@ DEPTS_DATA = [
                 "code": "SOP-HR-01",
                 "title": "Quy chuẩn An toàn Lao động Nhà máy Cơ khí & Cấp phát Trang bị Bảo hộ (PPE)",
                 "legal": "Luật An toàn Vệ sinh Lao động số 84/2015/QH13; Thông tư 25/2014/TT-BLĐTBXH",
-                "content": "Quy định 100% nhân sự vào xưởng phải mang giày mũi thép, mũ cứng và kính chắn hồ quang hàn. Sát hạch an toàn định kỳ mỗi 6 tháng cho công nhân 2 nhà máy.",
+                "content": "100% công nhân vào xưởng phải mang giày mũi thép, mũ cứng và kính chắn hồ quang. Sát hạch an toàn định kỳ mỗi 6 tháng.",
                 "file_name": "SOP-HR-01_An_Toan_Lao_Dong_Va_PPE.docx"
             }
         ],
@@ -252,8 +245,8 @@ DEPTS_DATA = [
             {
                 "code": "SOP-PUR-01",
                 "title": "Quy trình Lựa chọn, Đánh giá Nhà cung cấp Phôi & Đấu thầu Cước Logistics",
-                "legal": "Luật Thương mại; Tiêu chuẩn đánh giá nhà cung ứng ISO 9001; Incoterms 2020 (FOB/CIF)",
-                "content": "Lấy tối thiểu 03 báo giá độc lập cho đơn hàng vật tư chính. Thẩm định năng lực kho bãi, tiến độ giao hàng và uy tín chứng chỉ chất lượng phôi thép.",
+                "legal": "Luật Thương mại; Tiêu chuẩn ISO 9001; Incoterms 2020",
+                "content": "Lấy tối thiểu 03 báo giá độc lập cho đơn hàng vật tư chính. Thẩm định năng lực kho bãi, tiến độ giao hàng và uy tín chứng chỉ phôi.",
                 "file_name": "SOP-PUR-01_Thu_Mua_Va_Logistics.docx"
             }
         ],
@@ -279,8 +272,8 @@ DEPTS_DATA = [
             {
                 "code": "SOP-MAINT-01",
                 "title": "Quy trình Bảo trì Phòng ngừa Toàn diện (TPM) & Xử lý Sự cố Dừng máy Khẩn cấp",
-                "legal": "Quy chuẩn Kỹ thuật Quốc gia về an toàn máy móc thiết bị nâng hạ QCVN 07:2012/BLĐTBXH",
-                "content": "Quy định lịch kiểm tra hàng ngày (mức dầu, nhiệt độ ổ bi), hàng tuần (lọc dầu, xiết bulong chân đế) và bảo dưỡng đại tu định kỳ theo quý để đảm bảo tỷ lệ sẵn sàng của máy >= 98%.",
+                "legal": "Quy chuẩn Kỹ thuật Quốc gia QCVN 07:2012/BLĐTBXH",
+                "content": "Quy định kiểm tra hàng ngày (dầu, nhiệt độ ổ bi), hàng tuần (lọc dầu, bulong chân đế) và đại tu định kỳ theo quý.",
                 "file_name": "SOP-MAINT-01_Bao_Tri_Thiet_Bi_TPM.docx"
             }
         ],
@@ -308,33 +301,49 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. XÂY DỰNG HỆ THỐNG TAB THEO CÂY THƯ MỤC ---
-# Tạo danh sách các Tab: Tab 0 là Tổng quan, các Tab tiếp theo là từng Khối / Phòng ban
+# --- 6. HỆ THỐNG TABS ---
 tab_titles = ["📊 00. TỔNG QUAN HỆ THỐNG"] + [f"{d['name']}" for d in DEPTS_DATA]
 all_tabs = st.tabs(tab_titles)
 
 # ==========================================
-# TAB 0: TỔNG QUAN HỆ THỐNG (TOÀN CÔNG TY)
+# TAB 0: TỔNG QUAN HỆ THỐNG (ĐÃ FIX LỖI JS CHUNKS)
 # ==========================================
 with all_tabs[0]:
-    st.subheader("📊 Bảng Điều Khiển Tổng Quan Tiến Độ Chuẩn Hóa & Tuân Thủ (Company Overview)")
+    st.markdown("### 📊 Bảng Điều Khiển Tổng Quan Tiến Độ Chuẩn Hóa (Company Overview)")
     
-    # Tính toán số liệu tổng hợp
     total_depts = len(DEPTS_DATA)
     total_sops = sum(len(d["sops"]) for d in DEPTS_DATA)
     total_forms = sum(len(d["forms"]) for d in DEPTS_DATA)
+    sheets_count = len(df_sheets) if df_sheets is not None else 84
     
-    # Hiển thị KPI Cards
-    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
-    col_kpi1.metric("Tổng khối phòng ban", f"{total_depts} khối")
-    col_kpi2.metric("Quy trình chuẩn hóa (SOP)", f"{total_sops} văn bản", delta="100% có bản Word")
-    col_kpi3.metric("Biểu mẫu ban hành (Forms)", f"{total_forms} biểu mẫu", delta="100% có file Excel")
-    col_kpi4.metric("Dữ liệu Sheets đồng bộ", "84 mục tuân thủ" if df_sheets is not None else "Đang kết nối", delta="Live SSOT")
+    # RENDER KPI BẰNG NATIVE HTML CARD (Tránh lỗi TypeError của Streamlit Component JS)
+    kpi_html = f"""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Tổng Khối Phòng Ban</div>
+            <div style="color: #0f172a; font-size: 28px; font-weight: 700; margin-top: 4px;">{total_depts} khối</div>
+            <div style="color: #10b981; font-size: 12px; margin-top: 4px;">100% sẵn sàng</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Quy Trình Chuẩn Hóa (SOP)</div>
+            <div style="color: #0f172a; font-size: 28px; font-weight: 700; margin-top: 4px;">{total_sops} văn bản</div>
+            <div style="color: #2563eb; font-size: 12px; margin-top: 4px;">Định dạng .docx</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Biểu Mẫu Ban Hành (Forms)</div>
+            <div style="color: #0f172a; font-size: 28px; font-weight: 700; margin-top: 4px;">{total_forms} biểu mẫu</div>
+            <div style="color: #16a34a; font-size: 12px; margin-top: 4px;">Định dạng .xlsx</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Dữ Liệu Tuân Thủ Sheets</div>
+            <div style="color: #0f172a; font-size: 28px; font-weight: 700; margin-top: 4px;">{sheets_count} mục</div>
+            <div style="color: #0284c7; font-size: 12px; margin-top: 4px;">Đồng bộ trực tiếp</div>
+        </div>
+    </div>
+    """
+    st.markdown(kpi_html, unsafe_allow_html=True)
     
-    st.progress(1.0)
     st.markdown("---")
-    
-    # Bảng tổng hợp các phòng ban
     st.markdown("### 📋 Bảng Thống Kê Phân Bổ Theo Cây Thư Mục Phòng Ban")
     overview_rows = []
     for d in DEPTS_DATA:
@@ -347,11 +356,11 @@ with all_tabs[0]:
             "Số Lượng Biểu Mẫu (.xlsx)": len(d["forms"]),
             "Tình Trạng Lưu Trữ": "Đầy đủ quy chuẩn"
         })
-    st.table(pd.DataFrame(overview_rows))
+    # Dùng st.dataframe thay vì st.table để tối ưu tốc độ và không bao giờ bị lỗi chunk JS
+    st.dataframe(pd.DataFrame(overview_rows), use_container_width=True, hide_index=True)
     
     st.markdown("---")
-    # Hiển thị số liệu thực tế từ Google Sheets (84 mục tuân thủ)
-    st.markdown("### 📑 Dữ Liệu Rà Soát Tuân Thủ & Căn Cứ Pháp Lý (Từ Google Sheets)")
+    st.markdown("### 📑 Dữ Liệu Rà Soát Tuân Thủ & Căn Cứ Pháp Lý (Google Sheets Live Sync)")
     if df_sheets is not None and not df_sheets.empty:
         st.caption(f"Hệ thống đã kết nối trực tiếp với file Google Sheets của bạn ({len(df_sheets)} dòng dữ liệu).")
         st.dataframe(df_sheets, use_container_width=True, height=350)
@@ -365,7 +374,6 @@ for idx, dept in enumerate(DEPTS_DATA):
     with all_tabs[idx + 1]:
         st.subheader(f"📁 {dept['name']}")
         
-        # Header thông tin phòng ban
         col_meta1, col_meta2 = st.columns([2, 1])
         with col_meta1:
             st.markdown(f"**Phụ trách chính:** `{dept['leader']}`")
@@ -376,9 +384,8 @@ for idx, dept in enumerate(DEPTS_DATA):
             
         st.markdown("---")
         
-        # Phân 3 Tab con bên trong phòng ban
         sub_tab1, sub_tab2, sub_tab3 = st.tabs([
-            "📑 1. Văn Bản Quy Trình (SOP - .docx / .pdf)",
+            "📑 1. Văn Bản Quy Trình (SOP - .docx)",
             "📋 2. Biểu Mẫu Nghiệp Vụ (Forms - .xlsx)",
             "📤 3. Đăng Tải / Cập Nhật Bản Mới"
         ])
@@ -391,9 +398,7 @@ for idx, dept in enumerate(DEPTS_DATA):
                     st.markdown(f"⚖️ **Căn cứ pháp lý & Tiêu chuẩn ngành:** {sop['legal']}")
                     st.markdown(f"📝 **Nội dung hướng dẫn thực hiện:**\n{sop['content']}")
                     
-                    # Sinh file .docx thật để tải về
                     docx_bytes = create_sample_docx(sop['title'], sop['code'], dept['name'], sop['content'])
-                    
                     st.download_button(
                         label=f"📥 Tải Văn Bản Quy Trình Chuẩn (.docx) - {sop['file_name']}",
                         data=docx_bytes,
@@ -408,11 +413,9 @@ for idx, dept in enumerate(DEPTS_DATA):
             for form in dept["forms"]:
                 with st.expander(f"📝 [{form['code']}] {form['name']}", expanded=True):
                     st.markdown("**Cấu trúc cột dữ liệu biểu mẫu:**")
-                    st.dataframe(pd.DataFrame(form['rows'], columns=form['cols']), use_container_width=True)
+                    st.dataframe(pd.DataFrame(form['rows'], columns=form['cols']), use_container_width=True, hide_index=True)
                     
-                    # Sinh file .xlsx thật để tải về
                     xlsx_bytes = create_sample_xlsx(form['cols'], form['rows'], sheet_name=form['code'])
-                    
                     st.download_button(
                         label=f"📥 Tải Biểu Mẫu Chuẩn Excel (.xlsx) - {form['file_name']}",
                         data=xlsx_bytes,

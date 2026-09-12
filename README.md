@@ -1,10 +1,14 @@
-# Sổ Tay Tuân Thủ & Cổng Biểu Mẫu Nội Bộ (Streamlit App)
+# Hệ Thống Quản Trị Quy Trình & Biểu Mẫu Theo Cây Thư Mục Nội Bộ
 
-Ứng dụng kết nối trực tiếp với file Google Sheets CSV, phân chia theo từng phòng ban, cho phép nhân viên cập nhật tiến độ và tải lên (Upload) biểu mẫu cho từng mục quy trình cụ thể.
+Hệ thống được thiết kế theo cấu trúc thư mục động (Dynamic Directory Architecture):
+- Thư mục tổng: `HE_THONG_PHONG_BAN/`
+- Mỗi phòng ban là 1 thư mục con (ví dụ: `01_Khoi_San_Xuat/`, `02_Khoi_Ke_Toan/`...).
+- Trong mỗi phòng ban có 2 thư mục con chuẩn:
+  - `Quy_Trinh_SOP/`: Chứa các tài liệu quy trình, hướng dẫn thao tác chuẩn.
+  - `Bieu_Mau_Form/`: Chứa các biểu mẫu Excel, Word, PDF để nhân viên tải về dùng.
+  - `metadata.json`: Tự động ghi nhận thông tin quản lý và lịch sử cập nhật.
 
-## 🚀 Hướng dẫn triển khai lên GitHub & Streamlit Cloud
-1. Tải tệp `compliance_sop_full.zip` về máy tính và giải nén.
-2. Tạo một Repository mới trên GitHub (ví dụ: `compliance-sop-portal`).
-3. Tải toàn bộ các file (`app.py`, `requirements.txt`, `README.md`) lên kho vừa tạo.
-4. Truy cập [share.streamlit.io](https://share.streamlit.io/), chọn kho `compliance-sop-portal` và tệp chính là `app.py`.
-5. Nhấn **Deploy!** để hệ thống tự động khởi chạy.
+## 🚀 Thêm phòng ban mới:
+Có 2 cách:
+1. Thao tác trên giao diện: Vào tab **"➕ Quản Lý & Tạo Phòng Ban Mới"** -> Điền tên -> Hệ thống tự động tạo thư mục và phân loại.
+2. Thao tác vật lý trên máy chủ/GitHub: Chỉ cần tạo thêm 1 folder mới trong `HE_THONG_PHONG_BAN/`, hệ thống sẽ tự động quét và đưa lên website.

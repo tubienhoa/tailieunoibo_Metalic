@@ -16,7 +16,7 @@ st.set_page_config(
 # SOP: Standard Operating Procedure - Quy trình thao tác chuẩn quy định chi tiết các bước xử lý
 # KPI: Key Performance Indicator - Chỉ số đo lường hiệu suất (ở đây là tỷ lệ tuân thủ %)
 # RACI: Responsible, Accountable, Consulted, Informed - Ma trận phân công trách nhiệm
-# Single Source of Truth (SSOT): Nguồn dữ liệu gốc duy nhất (file Google Sheets)
+# Fallback: Cơ chế tự động gán dữ liệu dự phòng khi không tìm thấy cột tương ứng
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7vrN3GLRabuoKp2kDJp7IWCsDcuHsrxqaXZS7itG_nSG7GyHUHDF5ogUf-v_z230B2AfcWUTnSkCk/pub?output=csv"
 UPLOAD_DIR = "uploaded_forms"
@@ -36,10 +36,12 @@ if not os.path.exists(CUSTOM_UPDATES_FILE):
 
 def get_uploaded_forms():
     try:
-        with open(METADATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        if os.path.exists(METADATA_FILE):
+            with open(METADATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
     except Exception:
-        return []
+        pass
+    return []
 
 def save_uploaded_form(entry):
     forms = get_uploaded_forms()
@@ -49,10 +51,12 @@ def save_uploaded_form(entry):
 
 def get_item_updates():
     try:
-        with open(CUSTOM_UPDATES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        if os.path.exists(CUSTOM_UPDATES_FILE):
+            with open(CUSTOM_UPDATES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
     except Exception:
-        return {}
+        pass
+    return {}
 
 def save_item_update(item_id, update_dict):
     updates = get_item_updates()
@@ -62,11 +66,12 @@ def save_item_update(item_id, update_dict):
     with open(CUSTOM_UPDATES_FILE, "w", encoding="utf-8") as f:
         json.dump(updates, f, ensure_ascii=False, indent=2)
 
-# --- 2. NẠP DỮ LIỆU THỜI GIAN THỰC TỪ GOOGLE SHEETS ---
+# --- 2. NẠP DỮ LIỆU TỪ GOOGLE SHEETS ---
 @st.cache_data(ttl=300)
 def load_data_from_sheets(url):
     try:
         df = pd.read_csv(url)
+        # Làm sạch tên cột: loại bỏ khoảng trắng thừa
         df.columns = [str(c).strip() for c in df.columns]
         return df, None
     except Exception as e:
@@ -79,14 +84,13 @@ st.markdown("""
 <div style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); padding: 22px; border-radius: 14px; color: white; margin-bottom: 20px;">
     <h2 style="color: white; margin: 0; font-size: 24px;">🏢 SỔ TAY TUÂN THỦ QUY TRÌNH & KHO BIỂU MẪU PHÒNG BAN</h2>
     <p style="color: #93c5fd; margin-top: 6px; font-size: 13px; margin-bottom: 0;">
-        Dữ liệu gốc đồng bộ trực tiếp từ Google Sheets • Phân loại chuyên sâu theo từng phòng ban • Upload và đính kèm biểu mẫu cho từng mục quy trình
+        Dữ liệu gốc đồng bộ trực tiếp từ Google Sheets • Phân loại theo từng phòng ban cụ thể • Upload và đính kèm biểu mẫu cho từng mục
     </p>
 </div>
 """, unsafe_allow_html=True)
 
 if error_msg:
     st.error(f"⚠️ Không thể nạp dữ liệu từ Google Sheets: {error_msg}")
-    st.info("Vui lòng kiểm tra lại quyền truy cập hoặc kết nối mạng.")
     st.stop()
 
 if df_raw is None or df_raw.empty:
@@ -94,21 +98,39 @@ if df_raw is None or df_raw.empty:
     st.stop()
 
 df = df_raw.copy()
+
+# Tạo định danh duy nhất (Unique ID)
 if "_id" not in df.columns:
     df["_id"] = [f"item_{i+1}" for i in range(len(df))]
 
-# Tự động nhận diện các cột chính từ Google Sheets
-cols = list(df.columns)
-dept_col = next((c for c in cols if any(k in c.lower() for k in ["phòng ban", "bộ phận", "phân loại", "chủ đề", "nhóm", "lĩnh vực", "category"])), None)
-risk_col = next((c for c in cols if any(k in c.lower() for k in ["rủi ro", "risk", "mức độ"])), None)
-legal_col = next((c for c in cols if any(k in c.lower() for k in ["pháp lý", "căn cứ", "nghị định", "luật", "thông tư", "quy định"])), None)
-title_col = next((c for c in cols if any(k in c.lower() for k in ["nội dung", "mục", "tiêu đề", "hạng mục", "tên", "yêu cầu"])), cols[0])
+cols = [c for c in df.columns if c != "_id"]
 
-# Đọc các cập nhật tuân thủ đã lưu
+# --- NHẬN DIỆN CỘT THÔNG MINH (DEFENSIVE COLUMN DETECTION) ---
+# Tìm cột phòng ban / phân loại
+dept_candidates = ["phòng ban", "bộ phận", "phân loại", "chủ đề", "nhóm", "lĩnh vực", "category", "khoa", "khối"]
+dept_col = next((c for c in cols if any(k in c.lower() for k in dept_candidates)), None)
+
+# Nếu file Sheets chưa có cột phòng ban, tự động bổ sung cột giả định để tránh lỗi KeyError
+if dept_col is None:
+    dept_col = "Phòng Ban / Phân Loại"
+    df[dept_col] = "Chung (Toàn Công Ty)"
+
+# Tìm cột rủi ro
+risk_candidates = ["rủi ro", "risk", "mức độ", "mức", "level"]
+risk_col = next((c for c in cols if any(k in c.lower() for k in risk_candidates)), None)
+
+# Tìm cột căn cứ pháp lý
+legal_candidates = ["pháp lý", "căn cứ", "nghị định", "luật", "thông tư", "quy định", "chế tài"]
+legal_col = next((c for c in cols if any(k in c.lower() for k in legal_candidates)), None)
+
+# Tìm cột nội dung chính
+content_candidates = ["nội dung", "mục", "tiêu đề", "hạng mục", "tên", "yêu cầu", "công việc", "quy định"]
+title_col = next((c for c in cols if any(k in c.lower() for k in content_candidates)), cols[0])
+
+# Đọc cập nhật và biểu mẫu đã lưu
 item_updates = get_item_updates()
 uploaded_forms = get_uploaded_forms()
 
-# Đồng bộ trạng thái vào dataframe
 df["Trạng thái"] = df["_id"].apply(lambda x: item_updates.get(x, {}).get("status", "Chưa hoàn tất"))
 df["Ghi chú nội bộ"] = df["_id"].apply(lambda x: item_updates.get(x, {}).get("note", ""))
 
@@ -125,14 +147,16 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔍 Lọc Phòng Ban & Nghiệp Vụ")
     
-    selected_dept = "Tất cả phòng ban"
-    if dept_col:
-        depts_list = ["Tất cả phòng ban"] + sorted([str(x) for x in df[dept_col].dropna().unique() if str(x).strip()])
-        selected_dept = st.selectbox(f"Chọn phòng ban ({dept_col}):", depts_list)
-        
+    # Danh sách phòng ban duy nhất
+    raw_depts = df[dept_col].dropna().astype(str).unique().tolist()
+    depts_list = ["Tất cả phòng ban"] + sorted([d for d in raw_depts if d.strip() != ""])
+    selected_dept = st.selectbox(f"Chọn phòng ban ({dept_col}):", depts_list)
+    
+    # Lọc rủi ro
     selected_risk = "Tất cả mức độ"
     if risk_col:
-        risks_list = ["Tất cả mức độ"] + sorted([str(x) for x in df[risk_col].dropna().unique() if str(x).strip()])
+        raw_risks = df[risk_col].dropna().astype(str).unique().tolist()
+        risks_list = ["Tất cả mức độ"] + sorted([r for r in raw_risks if r.strip() != ""])
         selected_risk = st.selectbox("Mức độ rủi ro:", risks_list)
         
     search_text = st.text_input("Tìm kiếm từ khóa:", "")
@@ -142,12 +166,14 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# Lọc dữ liệu
+# Lọc dữ liệu an toàn
 filtered_df = df.copy()
-if dept_col and selected_dept != "Tất cả phòng ban":
+if selected_dept != "Tất cả phòng ban":
     filtered_df = filtered_df[filtered_df[dept_col].astype(str) == selected_dept]
+
 if risk_col and selected_risk != "Tất cả mức độ":
     filtered_df = filtered_df[filtered_df[risk_col].astype(str) == selected_risk]
+
 if search_text.strip():
     kw = search_text.strip().lower()
     mask = filtered_df.astype(str).apply(lambda row: row.str.lower().str.contains(kw, regex=False).any(), axis=1)
@@ -158,19 +184,22 @@ if view_mode == "📖 Sổ Tay Quy Trình Từng Phòng Ban":
     st.subheader(f"📑 Danh Mục Quy Trình Tuân Thủ Theo Phòng Ban (Hiển thị: {len(filtered_df)} / {len(df)} mục)")
     st.caption("Nhân viên chọn từng mục quy trình để xem căn cứ, đính kèm biểu mẫu sử dụng và cập nhật tiến độ thực hiện.")
     
-    # Nhóm theo phòng ban nếu có cột phòng ban
-    if dept_col and selected_dept == "Tất cả phòng ban":
-        dept_groups = filtered_df[dept_col].dropna().unique()
+    # Nhóm an toàn theo từng phòng ban
+    if selected_dept == "Tất cả phòng ban":
+        dept_groups = [d for d in filtered_df[dept_col].dropna().astype(str).unique() if d.strip() != ""]
     else:
         dept_groups = [selected_dept]
         
-    for dept_name in dept_groups:
-        sub_df = filtered_df if selected_dept != "Tất cả phòng ban" else filtered_df[filtered_df[dept_col] == dept_name]
+    if not dept_groups:
+        st.info("Không có dữ liệu phù hợp với bộ lọc.")
         
-        st.markdown(f"### 📁 Khối / Phòng Ban: {dept_name} ({len(sub_df)} quy trình)")
+    for dept_name in dept_groups:
+        sub_df = filtered_df[filtered_df[dept_col].astype(str) == dept_name]
+        
+        st.markdown(f"### 📁 Khối / Phòng Ban: **{dept_name}** ({len(sub_df)} quy trình)")
         
         for idx, row in sub_df.iterrows():
-            item_id = row["_id"]
+            item_id = str(row["_id"])
             current_status = row["Trạng thái"]
             title_text = str(row.get(title_col, f"Mục {item_id}"))
             risk_text = f"• Rủi ro: {row[risk_col]}" if risk_col and pd.notna(row.get(risk_col)) else ""
@@ -185,7 +214,7 @@ if view_mode == "📖 Sổ Tay Quy Trình Từng Phòng Ban":
                     if legal_col and pd.notna(row.get(legal_col)):
                         st.info(f"⚖️ **Căn cứ pháp lý & Chế tài:**\n\n{row[legal_col]}")
                         
-                    # Các trường thông tin khác từ Google Sheets
+                    # Hiển thị các cột thông tin chi tiết khác
                     other_cols = [c for c in cols if c not in [title_col, dept_col, risk_col, legal_col, "_id", "Trạng thái", "Ghi chú nội bộ"]]
                     if other_cols:
                         st.markdown("**Thông tin chi tiết quy định:**")
@@ -253,7 +282,7 @@ if view_mode == "📖 Sổ Tay Quy Trình Từng Phòng Ban":
                                 save_uploaded_form({
                                     "item_id": item_id,
                                     "item_title": title_text,
-                                    "department": str(row.get(dept_col, "Chung")) if dept_col else "Chung",
+                                    "department": str(row.get(dept_col, dept_name)),
                                     "form_name": form_name,
                                     "filename": safe_fname,
                                     "uploader": uploader_name,
@@ -274,8 +303,7 @@ elif view_mode == "📤 Tải Lên & Kho Biểu Mẫu Tập Trung":
     else:
         forms_df = pd.DataFrame(all_forms)
         
-        # Bộ lọc theo phòng ban trong kho biểu mẫu
-        dept_filter = st.selectbox("Lọc biểu mẫu theo phòng ban:", ["Tất cả"] + sorted(list(set(forms_df["department"].tolist()))))
+        dept_filter = st.selectbox("Lọc biểu mẫu theo phòng ban:", ["Tất cả"] + sorted(list(set(forms_df["department"].astype(str).tolist()))))
         if dept_filter != "Tất cả":
             forms_df = forms_df[forms_df["department"] == dept_filter]
             
@@ -320,22 +348,21 @@ else:
     st.progress(pct_rate / 100.0)
     st.markdown("---")
     
-    if dept_col:
-        st.markdown(f"#### 📈 Tỷ lệ hoàn thành phân bổ theo {dept_col}")
-        stat_rows = []
-        for d in sorted([str(x) for x in df[dept_col].dropna().unique() if str(x).strip()]):
-            sub_d = df[df[dept_col].astype(str) == d]
-            sub_total = len(sub_d)
-            sub_done = len([rid for rid in sub_d["_id"] if item_updates.get(rid, {}).get("status") == "Đã đạt chuẩn"])
-            sub_pct = int(sub_done / sub_total * 100) if sub_total > 0 else 0
-            stat_rows.append({
-                "Phòng Ban / Khối": d,
-                "Tổng số quy định": sub_total,
-                "Đã đạt": sub_done,
-                "Chưa đạt": sub_total - sub_done,
-                "Tiến độ (%)": f"{sub_pct}%"
-            })
-        st.table(pd.DataFrame(stat_rows))
+    st.markdown(f"#### 📈 Tỷ lệ hoàn thành phân bổ theo: {dept_col}")
+    stat_rows = []
+    for d in sorted([str(x) for x in df[dept_col].dropna().unique() if str(x).strip()]):
+        sub_d = df[df[dept_col].astype(str) == d]
+        sub_total = len(sub_d)
+        sub_done = len([rid for rid in sub_d["_id"] if item_updates.get(rid, {}).get("status") == "Đã đạt chuẩn"])
+        sub_pct = int(sub_done / sub_total * 100) if sub_total > 0 else 0
+        stat_rows.append({
+            "Phòng Ban / Khối": d,
+            "Tổng số quy định": sub_total,
+            "Đã đạt": sub_done,
+            "Chưa đạt": sub_total - sub_done,
+            "Tiến độ (%)": f"{sub_pct}%"
+        })
+    st.table(pd.DataFrame(stat_rows))
 
 # --- XUẤT BÁO CÁO KẾT QUẢ RÀ SOÁT ---
 st.markdown("---")
